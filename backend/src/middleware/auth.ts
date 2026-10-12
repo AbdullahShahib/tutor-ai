@@ -1,9 +1,15 @@
 import { FastifyRequest, FastifyReply } from "fastify";
+import { firebaseAuth } from "../firebase";
 
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   try {
-    await req.jwtVerify();
+    const header = req.headers.authorization;
+    if (!header?.startsWith("Bearer ")) throw new Error("Missing bearer token");
+
+    const token = header.slice("Bearer ".length);
+    const decoded = await firebaseAuth.verifyIdToken(token);
+    req.user = { sub: decoded.uid, email: decoded.email, role: decoded.role ?? "STUDENT" };
   } catch {
-    reply.code(401).send({ error: "Unauthorized" });
+    return reply.code(401).send({ error: "Unauthorized" });
   }
 }

@@ -1,6 +1,8 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { firebaseAuth } from "./firebase";
 
 const API_URL = (Constants.expoConfig?.extra?.apiUrl as string) ?? "http://localhost:4000";
 const TOKEN_KEY = "ai_tutor_jwt";
@@ -49,12 +51,10 @@ export interface AuthResponse {
 }
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
-  const result = await request<AuthResponse>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password })
-  });
-  await setToken(result.token);
-  return result;
+  const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+  const token = await credential.user.getIdToken();
+  await setToken(token);
+  return syncProfile(credential.user.displayName ?? email.split("@")[0]);
 }
 
 export async function signup(
@@ -62,12 +62,18 @@ export async function signup(
   password: string,
   name: string
 ): Promise<AuthResponse> {
-  const result = await request<AuthResponse>("/auth/signup", {
+  const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+  await updateProfile(credential.user, { displayName: name });
+  const token = await credential.user.getIdToken();
+  await setToken(token);
+  return syncProfile(name);
+}
+
+async function syncProfile(name: string): Promise<AuthResponse> {
+  return request<AuthResponse>("/auth/profile", {
     method: "POST",
-    body: JSON.stringify({ email, password, name })
+    body: JSON.stringify({ name })
   });
-  await setToken(result.token);
-  return result;
 }
 
 export interface NextProblemResponse {

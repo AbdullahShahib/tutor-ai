@@ -1,18 +1,28 @@
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
 const API_URL = (Constants.expoConfig?.extra?.apiUrl as string) ?? "http://localhost:4000";
 const TOKEN_KEY = "ai_tutor_jwt";
 
 export async function getToken(): Promise<string | null> {
+  if (Platform.OS === "web") return window.localStorage.getItem(TOKEN_KEY);
   return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
 async function setToken(token: string): Promise<void> {
+  if (Platform.OS === "web") {
+    window.localStorage.setItem(TOKEN_KEY, token);
+    return;
+  }
   await SecureStore.setItemAsync(TOKEN_KEY, token);
 }
 
 export async function clearToken(): Promise<void> {
+  if (Platform.OS === "web") {
+    window.localStorage.removeItem(TOKEN_KEY);
+    return;
+  }
   await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
 

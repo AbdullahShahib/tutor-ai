@@ -1,0 +1,58 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tutor
+      POSTGRES_PASSWORD: tutor
+      POSTGRES_DB: ai_tutor
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tutor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  verification-service:
+    build: ./verification-service
+    ports:
+      - "5001:5001"
+
+  backend:
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      verification-service:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://tutor:tutor@postgres:5432/ai_tutor?schema=public
+      REDIS_URL: redis://redis:6379
+      VERIFICATION_SERVICE_URL: http://verification-service:5001
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      USE_MOCK_LLM: "false"
+      JWT_SECRET: ${JWT_SECRET}
+      MASTERY_ADVANCE_THRESHOLD: "0.85"
+    ports:
+      - "4000:4000"
+
+volumes:
+  pgdata:

@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProblemStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  DEPRECATED
+}
+
+enum QuestionType {
+  NUMERIC
+  MCQ
+  FREE_RESPONSE
+}
+
+enum VerificationStatus {
+  PENDING
+  AUTO_VERIFIED
+  FAILED_VERIFICATION
+  HUMAN_FLAGGED
+}
+
+enum VerificationType {
+  KINEMATICS
+  NEWTONS_SECOND_LAW
+  KINETIC_ENERGY
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  name          String
+  gradeLevel    String?
+  targetExam    String?
+  createdAt     DateTime @default(now())
+
+  attempts      StudentAttempt[]
+  masteries     StudentConceptMastery[]
+}
+
+model Concept {
+  id             String   @id @default(uuid())
+  subject        String
+  chapter        String
+  topic          String
+  difficultyTier Int      @default(1)
+  parentId       String?
+  parent         Concept? @relation("ConceptTree", fields: [parentId], references: [id])
+  children       Concept[] @relation("ConceptTree")
+
+  seedProblems   SeedProblem[]
+  masteries      StudentConceptMastery[]
+
+  @@index([subject, chapter, topic])
+}
+
+model SeedProblem {
+  id             String        @id @default(uuid())
+  conceptId      String
+  concept        Concept       @relation(fields: [conceptId], references: [id])
+  difficulty     Int
+  questionType   QuestionType  @default(NUMERIC)
+  questionText   String
+  correctAnswer  String
+  solutionSteps  Json
+  verificationType VerificationType @default(KINEMATICS)
+  verificationParams Json @default("{}")
+  status         ProblemStatus @default(DRAFT)
+  version        Int           @default(1)
+  createdBy      String
+  approvedBy     String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  versions       SeedProblemVersion[]
+  variations     GeneratedVariation[]
+  attempts       StudentAttempt[]
+
+  @@index([conceptId, status, difficulty])
+}
+
+model SeedProblemVersion {
+  id             String      @id @default(uuid())
+  seedProblemId  String
+  seedProblem    SeedProblem @relation(fields: [seedProblemId], references: [id])
+  versionNumber  Int
+  snapshot       Json
+  editedBy       String
+  reviewNotes    String?
+  editedAt       DateTime    @default(now())
+
+  @@index([seedProblemId])
+}
+
+model GeneratedVariation {
+  id                  String              @id @default(uuid())
+  seedProblemId       String
+  seedProblem         SeedProblem         @relation(fields: [seedProblemId], references: [id])
+  questionText        String
+  answer              String
+  solutionSteps       Json
+  variationParams     Json
+  verificationStatus  VerificationStatus  @default(PENDING)
+  llmModelVersion     String
+  generatedAt         DateTime            @default(now())
+  servedCount         Int                 @default(0)
+
+  attempts            StudentAttempt[]
+
+  @@index([seedProblemId, verificationStatus])
+}
+
+model StudentAttempt {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id])
+
+  seedProblemId    String?
+  seedProblem      SeedProblem? @relation(fields: [seedProblemId], references: [id])
+  variationId      String?
+  variation        GeneratedVariation? @relation(fields: [variationId], references: [id])
+
+  submittedAnswer  String
+  isCorrect        Boolean
+  timeTakenSeconds Int?
+  attemptNumber    Int
+  hintUsed         Boolean   @default(false)
+  idempotencyKey   String?
+  createdAt        DateTime  @default(now())
+
+  intervention     AIIntervention?
+
+  @@index([userId, createdAt])
+  @@unique([userId, idempotencyKey])
+}
+
+model AIIntervention {
+  id                    String         @id @default(uuid())
+  attemptId             String         @unique
+  attempt               StudentAttempt @relation(fields: [attemptId], references: [id])
+  diagnosedMisconception String
+  explanationText       String
+  correctiveHint        String
+  followUpProblemId     String?
+  createdAt             DateTime       @default(now())
+}
+
+model StudentConceptMastery {
+  id                  String   @id @default(uuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  conceptId           String
+  concept             Concept  @relation(fields: [conceptId], references: [id])
+
+  masteryScore        Float    @default(0.3)
+  pTransit            Float    @default(0.25)
+  pSlip               Float    @default(0.10)
+  pGuess              Float    @default(0.15)
+
+  consecutiveCorrect  Int      @default(0)
+  consecutiveIncorrect Int     @default(0)
+  lastAttemptedAt     DateTime?
+  nextReviewAt        DateTime?
+
+  @@unique([userId, conceptId])
+  @@index([userId])
+}
